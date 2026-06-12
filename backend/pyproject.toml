@@ -1,0 +1,71 @@
+[project]
+name = "korca"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.7.0",
+    "neo4j>=5.19.0",
+    "python-multipart>=0.0.20",
+    "pypdf>=6.0.0",
+    "httpx>=0.28.0",
+    "sse-starlette>=2.2.0",
+    "aiofiles>=24.0.0",
+    "structlog>=24.0.0",
+    "langchain-text-splitters>=0.3.0",
+    "celery[redis]>=5.4.0",
+    "redis>=5.0.0",
+    "python-ulid>=2.0.0",
+    "langfuse>=4.0.0",
+    "slowapi>=0.1.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.8.0",
+    "mypy>=1.14.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "PL", "RUF", "T20", "ERA"]
+ignore = [
+    "E501",    # long Cypher queries and prompt strings can't be line-wrapped
+    "PLR0913", # Too many arguments in function definition
+    "PLR0915", # Too many statements
+    "PLR0912", # Too many branches
+    "PLR0911", # Too many return statements
+    "PLC0415", # Import should be at top-level of a file
+    "PLW0603", # Using the global statement is discouraged
+    "ERA001",  # Found commented-out code
+    "PLR2004", # Magic value used in comparison
+    "RUF002",  # Docstring contains ambiguous mathematical operators
+    "B904",    # raise ... from err inside except block
+    "B008",    # Do not perform function call in argument defaults (FastAPI Form/File dependencies)
+]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

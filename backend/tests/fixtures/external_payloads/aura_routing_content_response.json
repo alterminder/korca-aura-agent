@@ -1,0 +1,13 @@
+{
+  "id": "run_01jz_content",
+  "content": [
+    {
+      "type": "thinking",
+      "text": "Candidate old@example.com appears in context but is not final."
+    },
+    {
+      "type": "text",
+      "text": "RECOMMENDED: Carol.Expert@example.com\nReason: strongest historical match."
+    }
+  ]
+}

@@ -1,0 +1,156 @@
+{
+  "data": [
+    {
+      "id": 4093106,
+      "subject": "Website font is broken",
+      "previewText": "The font is missing on the homepage.",
+      "createdAt": "2026-05-10T09:00:00Z",
+      "updatedAt": "2026-05-10T10:00:00Z",
+      "relationships": {
+        "customer": {
+          "data": {
+            "type": "customers",
+            "id": 501
+          }
+        },
+        "company": {
+          "data": {
+            "type": "companies",
+            "id": 601
+          }
+        },
+        "agent": {
+          "data": {
+            "type": "users",
+            "id": 701
+          }
+        },
+        "inbox": {
+          "data": {
+            "type": "inboxes",
+            "id": 801
+          }
+        },
+        "status": {
+          "data": {
+            "type": "ticketstatuses",
+            "id": 901
+          }
+        },
+        "type": {
+          "data": {
+            "type": "tickettypes",
+            "id": 1001
+          }
+        },
+        "tags": {
+          "data": [
+            {
+              "type": "tags",
+              "id": 1101
+            },
+            {
+              "type": "tags",
+              "id": 1102
+            }
+          ]
+        },
+        "messages": {
+          "data": [
+            {
+              "type": "messages",
+              "id": 1201
+            },
+            {
+              "type": "messages",
+              "id": 1202
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "included": {
+    "customers": [
+      {
+        "id": 501,
+        "email": "requester@acme.com",
+        "firstName": "Requester",
+        "lastName": "Person"
+      }
+    ],
+    "companies": [
+      {
+        "id": 601,
+        "name": "Acme Ltd"
+      }
+    ],
+    "users": [
+      {
+        "id": 701,
+        "email": "alice@example.com",
+        "firstName": "Alice",
+        "lastName": "Expert"
+      }
+    ],
+    "inboxes": [
+      {
+        "id": 801,
+        "name": "Support"
+      }
+    ],
+    "ticketstatuses": [
+      {
+        "id": 901,
+        "name": "active"
+      }
+    ],
+    "tickettypes": [
+      {
+        "id": 1001,
+        "name": "Question"
+      }
+    ],
+    "tags": [
+      {
+        "id": 1101,
+        "name": "billing"
+      },
+      {
+        "id": 1102,
+        "name": "urgent"
+      }
+    ],
+    "messages": [
+      {
+        "id": 1201,
+        "htmlBody": "<p>Font is gone from the homepage.</p>",
+        "textBody": "Font is gone from the homepage.",
+        "meta": {
+          "threadType": "message"
+        },
+        "ticket": {
+          "id": 4093106,
+          "type": "tickets"
+        }
+      },
+      {
+        "id": 1202,
+        "htmlBody": "<p>Internal note should not be request content.</p>",
+        "textBody": "Internal note should not be request content.",
+        "meta": {
+          "threadType": "note"
+        },
+        "ticket": {
+          "id": 4093106,
+          "type": "tickets"
+        }
+      }
+    ]
+  },
+  "meta": {
+    "page": {
+      "hasMore": false
+    }
+  }
+}

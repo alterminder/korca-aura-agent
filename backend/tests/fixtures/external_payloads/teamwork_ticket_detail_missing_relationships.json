@@ -1,0 +1,22 @@
+{
+  "ticket": {
+    "id": 4093107,
+    "subject": "Malformed relationship payload",
+    "previewText": "Customer cannot access the portal.",
+    "relationships": {
+      "customer": {
+        "data": {
+          "type": "customers",
+          "id": "missing-customer"
+        }
+      },
+      "messages": {
+        "data": "unexpected-string"
+      }
+    }
+  },
+  "included": {
+    "customers": "unexpected-string",
+    "messages": "unexpected-string"
+  }
+}
