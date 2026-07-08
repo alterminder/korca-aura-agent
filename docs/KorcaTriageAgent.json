@@ -1,0 +1,106 @@
+{
+  "name": "Triage Agent",
+  "description": "Korca router",
+  "system_prompt": "You are a support ticket triage agent for a recruitment technology company.\nGiven a support ticket subject and description, your job is to identify the best expert to handle it based on historical ticket patterns and formal SOP documentation ownership.\n\nThe input may include metadata such as `Current ticket ID:` and `Client:`.\nTreat metadata as routing context only. Never include the current ticket ID, client name, or metadata labels in the Semantic Ticket Finder query.\n\nSteps:\n\n1. Use Semantic Ticket Finder to find similar historical tickets. Query using ONLY the ticket subject and description — do not include the client name or current ticket ID in the search query. The client name is for Client History Lookup only.\n\n   If Semantic Ticket Finder returns the current ticket ID, remove that ticket from the result set before using the IDs for any later step. The current ticket must never contribute to routing evidence.\n\n2. Extract the ticket IDs and call Expert Resolver with three parameters:\n   - ticket_ids_csv: plain comma-separated string of IDs, e.g. \"9784519,9822833,9781319\". No brackets, no quotes around individual IDs.\n   - client_name: the client name from the ticket, or empty string \"\" if none.\n   - exclude_ticket_id: the current ticket ID from the input metadata, or empty string \"\" if none.\n\n   Expert Resolver returns for each candidate:\n   - assigned_count: similar historical tickets whose final ASSIGNED_TO expert is this candidate\n   - similar_tickets_matched: total matched tickets with final ASSIGNED_TO evidence\n   - same_client_tickets: how many of the matched tickets came from this client (including parent company via WORKS_FOR hierarchy)\n   - expert_total_tickets: their full ticket history (use to judge specialist vs generalist)\n   - clients: recent client names from matched tickets\n   - sample_subjects: subjects of their matched tickets (limit 8)\n\n   Results include topic_score = assigned_count. Prefer the highest topic_score, but treat sample_subjects as lightweight hints only; compare them against the incoming ticket subject and description for topical fit. Use same_client_tickets as supporting evidence only when topic_score is close; never add same_client_tickets to topic_score and never let raw client volume override a better topical match. If scores are still close, favour the one whose similar_tickets_matched / expert_total_tickets ratio is higher (specialist over generalist).\n\n3. If a client name is mentioned, call Client History Lookup with the client name and exclude_ticket_id for additional context on recent tickets from that client. The current ticket must never appear in client history evidence.\n\n4. Extract 2-3 keywords from the incoming ticket subject and description/request content and call Skill Match with two parameters:\n   - keywords: comma-separated keywords, e.g. \"cv search,job board,integrations\"\n   - expert_emails_csv: comma-separated emails of all candidates returned by Expert Resolver, e.g. \"expert-a@example.com,expert-b@example.com\". Pass empty string \"\" if Expert Resolver returned no results.\n\n   Always run this step — do not skip it even when Expert Resolver returned strong signal.\n\n   Skill Match returns is_candidate=1 for experts already ranked by Expert Resolver. Use it as a convergence signal:\n   - is_candidate=1 AND matching_skills non-empty: this expert has both ticket history and skill ownership — strongest combined signal, prefer them.\n   - is_candidate=1 AND no matching skills: ticket history only, no skill confirmation.\n   - is_candidate=0 AND matching_skills non-empty: skill owner not yet in top results — consider if Expert Resolver signal was weak.\n   - If Expert Resolver returned fewer than 3 matched tickets for the top candidate, is_candidate=0 experts with matching skills become primary candidates.\n\n5. Call SOP Expert Finder with a single parameter:\n   - query: a natural-language phrase based on the ticket subject and description (e.g. \"cv search job board integration\"). Do NOT pass the client name or ticket ID — topic text only.\n   It returns designated experts linked to SOP document chunks that match the query, with a relevance score.\n\n6. Integrate all evidence and return your recommendation:\n   - Strongest signal: an expert returned by SOP Expert Finder who also appears in Skill Match or Expert Resolver candidates — confirms both formal SOP authority and historical capability.\n   - If Expert Resolver evidence is weak (fewer than 3 matched tickets for the top candidate), prioritise candidates from SOP Expert Finder and Skill Match over historical volume alone.\n   - When signals conflict, prefer the expert with the most convergent evidence across all tools.\n\nIf Expert Resolver is unavailable or returns no experts, do not use legacy routing_suggestions as evidence. Fall back to Skill Match and SOP Expert Finder candidates only, and use low confidence.\n\nYou MUST always end your response with this line, no exceptions:\nRECOMMENDED: <expert_email>\n\nExample: RECOMMENDED: expert@example.com\nIf you cannot determine an expert, still write: RECOMMENDED: unknown",
+  "is_private": true,
+  "is_mcp_enabled": false,
+  "tools": [
+    {
+      "name": "Semantic Ticket Finder",
+      "description": "Find similar tickets ",
+      "enabled": true,
+      "type": "similaritySearch",
+      "config": {
+        "provider": "vertexai",
+        "model": "gemini-embedding-001",
+        "index": "ticket_embedding_gemini",
+        "top_k": 10,
+        "dimension": 3072
+      }
+    },
+    {
+      "name": "Expert Resolver",
+      "description": "Get expert for tickets",
+      "enabled": true,
+      "type": "cypherTemplate",
+      "config": {
+        "template": "WITH [id IN split($ticket_ids_csv, ',') | trim(id)] AS id_strings,\n     [id IN split($ticket_ids_csv, ',') | toInteger(trim(id))] AS id_integers,\n     trim($exclude_ticket_id) AS exclude_ticket_id,\n     toInteger(trim($exclude_ticket_id)) AS exclude_ticket_id_int\nMATCH (u:User)-[rel:ASSIGNED_TO]->(t:Ticket)\nWHERE (t.id IN id_integers OR t.id IN id_strings)\n  AND coalesce(rel.final, false) = true\n  AND (t.ingest_status = 'promoted' OR t.ingest_status IS NULL)\n  AND (exclude_ticket_id = '' OR (t.id <> exclude_ticket_id AND t.id <> exclude_ticket_id_int))\nOPTIONAL MATCH (t)-[:FROM]->(c:Client)\nOPTIONAL MATCH (c)-[:WORKS_FOR]->(parent:Client)\nWITH u, t, c, parent,\n     CASE WHEN $client_name <> '' AND (\n       toLower(coalesce(c.name, ''))        CONTAINS toLower($client_name) OR\n       toLower(coalesce(c.domain, ''))      CONTAINS toLower($client_name) OR\n       toLower(coalesce(parent.name, ''))   CONTAINS toLower($client_name) OR\n       toLower(coalesce(parent.domain, '')) CONTAINS toLower($client_name))\n     THEN 1 ELSE 0 END AS is_client_ticket\nWITH u,\n     count(DISTINCT t) AS assigned_count,\n     count(DISTINCT t) AS similar_tickets_matched,\n     sum(is_client_ticket) AS same_client_tickets,\n     collect(DISTINCT c.name)[0..3] AS clients,\n     collect(DISTINCT t.subject)[0..8] AS sample_subjects\nOPTIONAL MATCH (u)-[all_rel:ASSIGNED_TO]->(all_t:Ticket)\nWHERE coalesce(all_rel.final, false) = true\n  AND (all_t.ingest_status = 'promoted' OR all_t.ingest_status IS NULL)\nWITH u, assigned_count, similar_tickets_matched, same_client_tickets, clients, sample_subjects,\n     count(DISTINCT all_t) AS expert_total_tickets\nRETURN u.name AS name, u.email AS email,\n       assigned_count,\n       similar_tickets_matched,\n       same_client_tickets,\n       expert_total_tickets,\n       clients,\n       sample_subjects,\n       assigned_count AS topic_score\nORDER BY topic_score DESC, same_client_tickets DESC, similar_tickets_matched DESC\nLIMIT 5",
+        "parameters": [
+          {
+            "name": "ticket_ids_csv",
+            "data_type": "string",
+            "description": "list of ticket IDs from Tool 1"
+          },
+          {
+            "name": "client_name",
+            "data_type": "string",
+            "description": "Client name"
+          },
+          {
+            "name": "exclude_ticket_id",
+            "data_type": "string",
+            "description": "ticket id to exclude"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Client History Lookup",
+      "description": "Look up client tickets",
+      "enabled": true,
+      "type": "cypherTemplate",
+      "config": {
+        "template": "MATCH (t:Ticket)-[:FROM]->(c:Client)\nOPTIONAL MATCH (c)-[:WORKS_FOR]->(parent:Client)\nWITH t, c, parent, trim($exclude_ticket_id) AS exclude_ticket_id, toInteger(trim($exclude_ticket_id)) AS exclude_ticket_id_int\nWHERE (exclude_ticket_id = '' OR (t.id <> exclude_ticket_id AND t.id <> exclude_ticket_id_int))\n  AND (t.ingest_status = 'promoted' OR t.ingest_status IS NULL)\n  AND (\n    toLower(coalesce(c.name, '')) CONTAINS toLower($client_name)\n    OR toLower(coalesce(c.domain, '')) CONTAINS toLower($client_name)\n    OR toLower(coalesce(parent.name, '')) CONTAINS toLower($client_name)\n    OR toLower(coalesce(parent.domain, '')) CONTAINS toLower($client_name)\n  )\nMATCH (u:User)-[assignment:ASSIGNED_TO]->(t)\nWHERE coalesce(assignment.final, false) = true\nRETURN t.subject AS subject, t.id AS id,\n       u.name AS expert,\n       t.ingest_status AS status,\n       t.created_at AS created_at\nORDER BY t.created_at DESC\nLIMIT 10",
+        "parameters": [
+          {
+            "name": "client_name",
+            "data_type": "string",
+            "description": "Client name extracted from the ticket subject or content "
+          },
+          {
+            "name": "exclude_ticket_id",
+            "data_type": "string",
+            "description": "ticket id to exclude"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Skill Match",
+      "description": "skills matcher",
+      "enabled": true,
+      "type": "cypherTemplate",
+      "config": {
+        "template": "WITH [keyword IN split($keywords, ',') WHERE trim(keyword) <> ''] AS kw_list,\n     CASE WHEN trim($expert_emails_csv) <> '' THEN [email IN split($expert_emails_csv, ',') | trim(email)] ELSE [] END AS priority_emails\nMATCH (u:User)-[:HAS_SKILL]->(s:Skill)\nWHERE size(kw_list) > 0\n  AND any(keyword IN kw_list WHERE toLower(s.name) CONTAINS toLower(trim(keyword)))\nWITH u, collect(s.name) AS matching_skills, priority_emails\nRETURN u.name AS name,\n       u.email AS email,\n       matching_skills,\n       CASE WHEN u.email IN priority_emails THEN 1 ELSE 0 END AS is_candidate\nORDER BY is_candidate DESC, size(matching_skills) DESC\nLIMIT 5",
+        "parameters": [
+          {
+            "name": "keywords",
+            "data_type": "string",
+            "description": "keywords"
+          },
+          {
+            "name": "expert_emails_csv",
+            "data_type": "string",
+            "description": "expert emails"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SOP Expert Finder",
+      "description": "SOP Expert Finder",
+      "enabled": true,
+      "type": "cypherTemplate",
+      "config": {
+        "template": "CALL db.index.fulltext.queryNodes('chunk_fulltext', $query, {limit: 10})\nYIELD node AS chunk, score\nMATCH (d:Document)-[:CONTAINS]->(chunk)\nMATCH (u:User)-[:EXPERT_IN]->(d)\nWITH u, d, max(score) AS relevance_score\nRETURN u.name AS expert_name,\n       u.email AS expert_email,\n       d.title AS document_title,\n       relevance_score\nORDER BY relevance_score DESC\nLIMIT 5",
+        "parameters": [
+          {
+            "name": "query",
+            "data_type": "string",
+            "description": "topic phrase from ticket subject and description, no client name or ticket ID"
+          }
+        ]
+      }
+    }
+  ]
+}
