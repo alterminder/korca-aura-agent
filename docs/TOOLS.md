@@ -1,4 +1,4 @@
-tool 1 Semantic Ticket Finder
+Tool 1 Semantic Ticket Finder
 Index - ticket_embedding_gemini
 Model - gemini-embedding-001
 
